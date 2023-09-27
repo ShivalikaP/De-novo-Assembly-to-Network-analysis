@@ -1,0 +1,409 @@
+##De novo Assembly to Network analysis in identificationof Biomarkers
+#RNA-Seq De novo Assembly Using Trinity
+#https://github.com/trinityrnaseq/trinityrnaseq/wiki
+#https://bioinformaticsdotca.github.io/rnaseq_2017_tutorial6
+#https://biohpc.cornell.edu/lab/doc/Trinity_workshop.pdf
+
+##Modify by Pathania S
+#rename your file ids to TR ids using commands
+cd /home/Shivalika/Documents/DATA/
+#input and output file has been inserted into  the rename_TR.py  
+python rename_TR.py >rename_out.fa                         #to rename fasta file
+#file rename_out.fasta file was generate
+
+---------------------(go to utils folder for these steps)----------------------------------------------------------------------------------------
+
+#in trinity "utils" folder run this commands
+
+/home/shivalika/trinityrnaseq-Trinity-v2.4.0/util/align_and_estimate_abundance.pl --transcripts /home/shivalika/Documents/DATA/rename_out.fasta --seqType fq --samples_file /home/shivalika/Documents/DATA/SAMPLE_FILE.txt --est_method RSEM --thread_count 6 --aln_method bowtie --trinity_mode --prep_reference --output_prefix /home/shivalika/Documents/DATA/DATA_OUT
+
+
+./align_and_estimate_abundance.pl --transcripts DOX.fa --seqType fq --samples_file sample_cold.txt --est_method RSEM --thread_count 2 --aln_method bowtie --trinity_mode --prep_reference --output_prefix HC
+
+./abundance_estimates_to_matrix.pl --est_method RSEM /home/shivalika/trinityrnaseq-Trinity-v2.4.0/util/CST1R3/CST1R3.isoforms.results /home/shivalika/trinityrnaseq-Trinity-v2.4.0/util/CST1R4/CST1R4.isoforms.results /home/shivalika/trinityrnaseq-Trinity-v2.4.0/util/CST2R1/CST2R1.isoforms.results /home/shivalika/trinityrnaseq-Trinity-v2.4.0/util/CST2R2/CST2R2.isoforms.results /home/shivalika/trinityrnaseq-Trinity-v2.4.0/util/TST1R3/TST1R3.isoforms.results /home/shivalika/trinityrnaseq-Trinity-v2.4.0/util/TST1R4/TST1R4.isoforms.results /home/shivalika/trinityrnaseq-Trinity-v2.4.0/util/TST2R1/TST2R1.isoforms.results /home/shivalika/trinityrnaseq-Trinity-v2.4.0/util/TST2R2/TST2R2.isoforms.results   --out_prefix DATA_OUT_NW
+
+
+
+
+----------------------(go to differential expression analysis folder for these steps)----------------------------------------------------------------------------------------
+
+#Run this in trinity/analysis/differential_expression folder (if you dont have replicates then use dispersion otherwise don't)
+
+./run_DE_analysis.pl --matrix DATA_OUT_NW.counts.matrix --method edgeR --dispersion 0.1 --samples_file SAMPLE_FILE.txt --output FPKM_DATA_OUT_NW
+
+
+ # foler with name FPKM_DATA_OUT_NW generated
+---------------------(go to utils folder for this step only)----------------------------------------------------------------------------------------
+#use any one of the isoforms.results file for generating trans_lengths file(only for one file)
+
+cd /home/shivalika/trinityrnaseq-Trinity-v2.4.0/util/TST1R3
+cut -f1,3,4 TST1R3.isoforms.results >TST1R3.isoforms.results.trans_lengths.txt
+cp TST1R3.isoforms.results.trans_lengths.txt /home/shivalika/trinityrnaseq-Trinity-v2.4.0/Analysis/DifferentialExpression
+
+---------------------(go to differential expression analysis folder for these steps)----------------------------------------------------------------------------------------
+#copy whole contents of output folder outside in differential expression folder where perl command lies: for las step to get differentially expressed genes
+#run noralization command and the file generate will be TMM_NORMALIZED.FPKM file (use this for co-expression analysis further) ##FINAL_FPKM_FILE_NORMALIZED###
+
+./run_TMM_normalization_write_FPKM_matrix.pl --matrix FPKM_DATA_OUT_NW.counts.matrix --lengths TST1R3.isoforms.results.trans_lengths.txt
+
+
+#you cam vary -c value (by default-2) which gives fold change; and -p value(by default-0.001) which gives probability of occurence
+#./analyze_diff_expr.pl --matrix FPKM_DATA_OUT_NW.counts.matrix.TMM_normalized.FPKM --samples /home/shivalika/trinityrnaseq-Trinity-v2.4.0/util/SAMPLE_FILE.txt -C 1 -P 1
+
+/home/shivalika/trinityrnaseq-Trinity-v2.4.0/Analysis/DifferentialExpression/analyze_diff_expr.pl --matrix FPKM_DATA_OUT_NW.counts.matrix.TMM_normalized.FPKM --samples SAMPLE_FILE.txt
+
+
+sudo R
+##evolcano plot for degs using R programinng
+library(edgeR)
+library(gplots)
+library(RColorBrewer)
+library(pheatmap)
+library(EnhancedVolcano)
+res2 <- read.table("FPKM_DATA_OUT_NW.counts.matrix.Control_vs_Treated.edgeR.DE_results", header=TRUE, row.names=1, sep="\t")
+head(res2)
+
+png("EnVol_COMP_DEGs1.png", res=300, width = 10, height = 10, units="in");
+EnhancedVolcano(res2,
+    lab = rownames(res2),
+    x = 'logFC',
+    y = 'FDR',
+    pCutoff = 10e-4,
+    FCcutoff = 2,
+    pointSize = 4.0,
+    labSize = 4.0, labCol = 'black', boxedLabels = F, colAlpha = 4/5, legendPosition = 'right', legendLabSize = 10, legendIconSize = 4.0, drawConnectors = TRUE, widthConnectors = 0.2, colConnectors = 'black')
+dev.off()
+
+png("EnVol_COMP_DP_DEGs2.png", res=300, width = 10, height = 10, units="in");
+  EnhancedVolcano(res2,
+    lab = rownames(res2),
+    x = 'logFC',
+    y = 'PValue',
+   xlim = c(-20, 20),
+   ylim = c(0, 20),
+    pCutoff = 10e-7,
+    FCcutoff = 2,
+    pointSize = 3.0,
+    labSize = 4.0,
+    cutoffLineType = 'blank',
+    cutoffLineCol = 'black',
+    cutoffLineWidth = 0.8,
+    #hline = c(10e-7,
+    #  10e-7 * 10e-8),
+    #hlineCol = c('hotpink', 'purple'),
+    #hlineType = c('dotdash', 'dotdash'),
+    #hlineWidth = c(1.5, 1.5),
+    gridlines.major = T,
+    gridlines.minor = T, labCol = 'black', boxedLabels = F, colAlpha = 4/5, legendPosition = 'right', legendLabSize = 12, legendIconSize = 4.0, drawConnectors = FALSE, widthConnectors = 0.5, colConnectors = 'black')
+dev.off()
+
+##Fetch the DEGs with stastically significannt FDR values for further analysis.
+sum(res2$FDR<=0.05)   #output at FDR 0.05  DEGs_FDR_0.05.txt
+sum(res2$FDR<0.01)    #output at FDR 0.01  DEGs_FDR_0.05.txt
+awk -F"\t" '{print $1}' DEGs_FDR_0.05.txt >DEGs_FDR_0.05_IDs.txt 
+
+#fetch FPKM for these DEGs IDs
+awk 'FNR==NR{a[$1];next}($1 in a) {print $1"\t"$8"\t"$9"\t"$6"\t"$7"\t"$4"\t"$5"\t"$2"\t"$3}' DEGs_FDR_0.05_IDs.txt FPKM_DATA_OUT_NW.counts.matrix.TMM_normalized.FPKM >DEGs_EXPRS_FINAL.txt
+awk 'FNR==NR{a[$1];next}($1 in a) {print $1"\t"$6"\t"$7"\t"$8"\t"$9"\t"$2"\t"$3"\t"$4"\t"$5}' DEGs_FDR_0.05_IDs.txt FPKM_DATA_OUT_NW.counts.matrix.TMM_normalized.FPKM | wc
+ #   count will display
+
+#heatmap using R
+###PLOT DEGs heatmap############################################################################################################################################################################
+library("gplots")
+library(RColorBrewer)
+library(pheatmap)
+DEGs_FINAL = read.table("DEGs_EXPRS_FINAL.txt", header=T, row.names=1, sep='\t')
+
+png("Heatmap_DEGs_FINAL.png", width =5, height = 5, units = 'in', res = 300)
+pheatmap(DEGs_FINAL, color = colorRampPalette(rev(brewer.pal(n = 7, name =  "RdYlBu")))(200), border_color="NA", scale = "row", clustering_distance_rows = "correlation", show_rownames = F, fontsize=7)
+dev.off()
+
+##same plot using diffrent color
+png("Heatmap_DEGs_FINAL2.png", width =5, height = 5, units = 'in', res = 300)
+pheatmap(DEGs_FINAL, color = colorRampPalette(c("navy", "black", "yellow"))(50), border_color="NA", scale = "row", clustering_distance_rows = "correlation", show_rownames = F, fontsize=7)
+dev.off()
+
+png("Heatmap_DEGs_FINAL3.png", width =5, height = 5, units = 'in', res = 300)
+pheatmap(DEGs_FINAL, color=greenred(75), border_color="NA", scale = "row", clustering_distance_rows = "correlation", show_rownames = F, fontsize=7)
+dev.off()
+
+
+#fetch fasta seq for DEGs_FINAL
+perl singleline.pl Trinity_out.Trinity.fasta >Trinity_out_NW.Trinity.fasta 
+sed '/^>/ s/ .*//' Trinity_out_NW.Trinity.fasta >Trinity_out_NW2.Trinity.fasta 
+perl -ne 'if(/^>(\S+)/){$c=$i{$1}}$c?print:chomp;$i{$_}=1 if @ARGV' DEGs_FDR_0.05_IDs.txt Trinity_out_NW2.Trinity.fasta >FASTA_DEGs_FINAL_TRINITY.fasta
+perl -ne 'if(/^>(\S+)/){$c=$i{$1}}$c?print:chomp;$i{$_}=1 if @ARGV' DEGs_FDR_0.05_IDs.txt Trinity_out_NW2.Trinity.fasta | grep -c "^>"
+#countof DEGs to crosscheck
+
+####BLAST against MODEL/REFERENCE database
+#FOR TF BLAST
+cp FASTA_DEGs_FINAL_TRINITY.fasta /home/shivalika/Documents/DATA/BLAST_TF
+blastx -query FASTA_DEGs_FINAL_TRINITY.fasta -db PlantTFDB-all_TF_pep.fas  -evalue 1e-05 -out BLAST_TF_DEGs_out.txt -num_threads 24
+
+perl top_hit.pl BLAST_TF_DEGs_out.txt >TOPHIT_BLAST_TF_DEGs_out.txt
+# to kept only TF corresponding to iD in two Coloumns only
+awk -F"|" '{print $1"\t"$2}' TOPHIT_BLAST_TF_DEGs_DP.txt >FINAL_TOPHIT_BLAST_TF_DEGs.txt
+
+#fetch TR Ds coreesponding to TRINITY IDs
+perl match_TF_family.pl DEGs_FDR_0.05_IDs.txt FINAL_TOPHIT_BLAST_TF_DEGs.txt >FINAL_TOPHIT_BLAST_TF_DEGs_TRINITY_TRIDs.txt 
+
+#for TAIR BLAST
+cp FASTA_DEGs_FINAL_TRINITY.fasta /home/shivalika/Documents/DATA/BLAST_TAIR
+blastx -query FASTA_DEGs_FINAL_TRINITY.fasta -db Arabidopsis_thaliana.TAIR10.pep.all.fa  -evalue 1e-05 -out BLAST_TAIR_DEGs.txt -num_threads 24
+perl top_hit.pl BLAST_TAIR_DEGs.txt >TOPHIT_BLAST_TAIR_DEGs.txt
+
+
+cat DEG_DP_EXPRS_without_TFs.txt DEGs_DP_EXPRS_with_TFs.txt >DEGs_EXPRS_FINAL.txt
+
+
+##########@@@@@NETWORK CONSTRUCTION AND DIFFERENTIAL NETWOR ANALYSIS USING WGCNA IN R PROGRAMMING####################################################################################################################################################
+###a. read input expssion data
+COMM_DEGs_D1_D2<-read.table("DEGs_EXPRS_FINAL.txt", sep="\t", header=TRUE, row.names=1)
+dim(COMM_DEGs_D1_D2)                                                                                                
+class(COMM_DEGs_D1_D2)
+
+DEGs_D1<-COMM_DEGs_D1_D2[,c(1:4)]
+class(DEGs_109)                                                                                                      #[1] "data.frame"
+#write.csv(CARS_DATA, file="DEGs_109.csv", row.names=F)
+
+DEGs_D2<-COMM_DEGs_D1_D2[,c(5:8)]
+#write.csv(DEGs_D2, file="DEGs_D2.csv", row.names=F)                                                                              
+class(DEGs_D2)                                                                                                    #[1] "data.frame" 
+
+
+######b. Transpose D1 annd D2##########################################################################################################
+
+DEGs_name<-row.names(COMM_DEGs_D1_D2)                                                                         
+class(DEGs_name)                                                                                               
+DEGs_D1_T<-as.data.frame(t(DEGs_D1))
+DEGs_D2_T<-as.data.frame(t(DEGs_D2))
+
+###c.remove outliers in DEGs###################################################################################################################
+sampleTree_DEGs_D1 = flashClust(dist(DEGs_D1_T), method = "average");
+sampleTree_DEGs_D2 = flashClust(dist(DEGs_D2_T), method = "average");
+
+
+png("remove_outlier_DEGs_D1_D2.png", res=300, width = 10, height = 6.8, units="in");
+par(mfrow=c(1,2))
+par(cex = 0.6);
+par(mar = c(0,4,2,0))
+plot(sampleTree_DEGs_D1, main = "Sample clustering to detect outliers", sub="", xlab="", cex.lab = 1.5, cex.axis = 1.5, cex.main = 2)
+plot(sampleTree_DEGs_D2, main = "Sample clustering to detect outliers", sub="", xlab="", cex.lab = 1.5, cex.axis = 1.5, cex.main = 2)
+dev.off()
+
+##############################################################################################################################################################
+
+beta=12 #default was selected for signed network
+
+#######
+
+####d. Module detection##############################################################################################################################################################
+##d1. Dendrogram construction#########################################################################################################################################################################
+
+adjacency_DEGs_D1 = adjacency(DEGs_D19_T,power=12,type="signed");
+diag(adjacency_DEGs_109)=0
+dissTOM_DEGs_D1= 1-TOMsimilarity(adjacency_DEGs_D1, TOMType="signed")
+geneTree_DEGs_D1 = flashClust(as.dist(dissTOM_DEGs_D1), method="average")
+
+adjacency_DEGs_D2 = adjacency(DEGs_D2_T,power=12,type="signed");
+diag(adjacency_D2_D2)=0
+dissTOM_DEGs_D2= 1-TOMsimilarity(adjacency_DEGs_D2, TOMType="signed")
+geneTree_DEGs_D2 = flashClust(as.dist(dissTOM_DEGs_D2), method="average")
+
+png("dendrogram_DEGs_D1_D2.png",height=8,width=10, units="in", res=300)
+par(mfrow=c(1,2))
+plot(geneTree_DEGs_D1,xlab="",sub="",main="Gene clustering on TOM-based dissimilarity (DEGs_D1)", cex.main=0.5, labels=FALSE,hang=0.04);
+plot(geneTree_DEGs_D2,xlab="",sub="",main="Gene clustering on TOM-based dissimilarity (DEGs_D2)", cex.main=0.5,labels=FALSE,hang=0.04);
+dev.off()
+
+###d2. clustering and module detection###	
+##for data D1																																																																																																																																																																																																																																																																																																																							}
+mColorh_DEGs_D1=NULL
+for (ds in 0:3){
+tree_DEGs_D1= cutreeHybrid(dendro = geneTree_DEGs_D1, pamStage=FALSE, minClusterSize = (20-3*ds), cutHeight = 0.99, deepSplit = ds, distM = dissTOM_DEGs_D1)
+mColorh_DEGs_D1=cbind(mColorh_DEGs_D1,labels2colors(tree_DEGs_D1$labels));
+}
+
+png("Module_choices_DEGs_D1.png", height=10,width=10, units="in", res=300);
+plotDendroAndColors(geneTree_DEGs_D1, mColorh_DEGs_D1, paste("dpSplt =",0:3), main = "",dendroLabels=FALSE);
+dev.off()
+modules_DEGs_D1= mColorh_DEGs_D1[,3] # (Chosen based on plot below) deepsplit of 3 was selected for both datasets
+
+colors_DEGs_D1 = names(table(modules_DEGs_D1))                                       
+colors_DEGs_D1
+#[1] "blue"      "brown"     "grey"      "turquoise" "yellow"   
+ 
+##for data D2
+mColorh_DEGs_D2=NULL
+for (ds in 0:3){
+tree_DEGs_D2= cutreeHybrid(dendro = geneTree_DEGs_D2, pamStage=FALSE, minClusterSize = (50-3*ds), cutHeight = 0.99, deepSplit = ds, distM = dissTOM_DEGs_D2)
+mColorh_DEGs_D2=cbind(mColorh_DEGs_D2,labels2colors(tree_DEGs_D2$labels));
+}
+
+png("Module_choices_DEGs_D2.png", height=10,width=10, units="in", res=300);
+plotDendroAndColors(geneTree_DEGs_D2, mColorh_DEGs_D2, paste("dpSplt =",0:3), main = "",dendroLabels=FALSE);
+dev.off()
+modules_DEGs_D2= mColorh_DEGs_D2[,3] # (Chosen based on plot below)
+
+colors_DEGs_D2 = names(table(modules_DEGs_D2))                                        #27
+colors_DEGs_D2
+#[1] "blue"      "brown"     "green"     "grey"      "red"       "turquoise"
+#[7] "yellow"   
+
+###d3. HUB gene in each module###
+##for data D1
+chooseTopHubInEachModule(DEGs_D1_T, modules_DEGs_D1, omitColors = "grey", power = 2, type = "signed")
+##for data D2
+ chooseTopHubInEachModule(DEGs_D2_T, modules_DEGs_D2, omitColors = "grey", power = 2, type = "signed")
+ 
+
+###e1. Relating consensus modules/ COMPARISION OF NETWORKS###################################################################################################################################################
+consensus_match<-overlapTable(modules_DEGs_D2, modules_DEGs_D1)      #http://www.inside-r.org/packages/cran/WGCNA/docs/overlapTable and matchLabels http://rpackages.ianhowson.com/cran/WGCNA/man/matchLabels.html
+consensus_match$pTable
+
+                  blue        brown        grey    turquoise       yellow
+blue      2.069192e-01 8.490785e-01 0.268766028 0.7158253104 1.000000e+00
+brown     1.000000e+00 8.486580e-01 0.005314128 0.9364212077 8.608336e-01
+green     1.000000e+00 9.366107e-01 0.012506700 0.8689761338 7.928843e-01
+grey      1.503076e-05 8.028012e-05 1.000000000 0.0001958926 6.006888e-07
+red       9.454578e-01 9.257419e-01 0.114091745 0.3912980968 1.000000e+00
+turquoise 7.840280e-01 9.436764e-01 0.007607849 0.9576076861 9.747045e-01
+yellow    1.000000e+00 7.746791e-01 0.002066203 0.9786309990 1.000000e+00
+
+
+consensus_match$countTable
+          blue brown grey turquoise yellow
+blue         7     3   80         5      0
+brown        0     2   63         2      1
+green        0     1   51         2      1
+grey        16    14   53        16     12
+red          1     1   46         4      0
+turquoise    5     3  107         4      1
+yellow       0     2   55         1      0
+
+
+pTable<- -log10(consensus_match$pTable)
+countTable<-consensus_match$countTable
+pTable[is.infinite(pTable)]=1.3*max(pTable[is.finite(pTable)])
+pTable[pTable>50]=50
+
+DEGs_D2_Totals=apply(countTable, 1, sum)
+DEGs_109_Totals=apply(countTable, 2, sum)
+png("consensus_match_DEGs_D2_D1.png", height=10, width=10, units="in", res=300)
+par(mar=c(8,10.4,2.7,1)+0.3)
+labeledHeatmap(Matrix=pTable, xLabels=paste(" ", colors_DEGs_D1), yLabels=paste(" ", colors_DEGs_D2), colorLabels=TRUE, xSymbols=paste("DEGs_D1", colors_DEGs_D1, ": ", DEGs_D1_Totals, sep=""), ySymbols=paste("DEGs_D2", colors_DEGs_D2, ": ", DEGs_D2_Totals, sep=""), textMatrix=countTable, colors=blueWhiteRed(100)[50:100], main="Correspodence of  DEGs_D2 and DEGs_D1 consensus modules", cex.text=.6, cex.lab=0.6, setStdMargins=FALSE);
+dev.off()
+
+##################################################################################
+
+#f1. HUB genes based on scale connectivity for Phenotypically  significant modules in D1 vs D2###################################
+
+#####################
+##@DATA D1#####
+
+library(plyr)
+##Calculate Gene Significance (GS) and Module membership (MM) of D1
+# Define variable weight containing the weight column of datTrait
+TRAIT_D1 = as.data.frame(traitData_DEG_D1$Trait);
+names(TRAIT_D1) = "TRAIT_D1"
+# names (colors) of the modules
+modNames_DEGs_D1 = substring(names(MEs_DEGs_D1), 3)
+
+geneModuleMembership_GS_DEGs_D1 = as.data.frame(cor(DEGs_D1_T, MEs_DEGs_D1, use = "p"));
+MMPvalue_GS_DEGs_D1 = as.data.frame(corPvalueStudent(as.matrix(geneModuleMembership_GS_DEGs_D1), nSamples_D1_NW));
+names(geneModuleMembership_GS_DEGs_D1) = paste("MM", modNames_DEGs_D1, sep="");
+names(MMPvalue_GS_DEGs_D1) = paste("p.MM", modNames_DEGs_D1, sep="");
+
+geneTraitSignificance_GS_DEGs_D1 = as.data.frame(cor(DEGs_D1_T, TRAIT_D1, use = "p"));
+GSPvalue_GS_DEGs_D1 = as.data.frame(corPvalueStudent(as.matrix(geneTraitSignificance_GS_DEGs_D1), nSamples_D1_NW));
+names(geneTraitSignificance_GS_DEGs_D1) = paste("GS.", names(TRAIT_D1), sep="");
+names(GSPvalue_GS_DEGs_D1) = paste("p.GS.", names(TRAIT_D1), sep="");
+
+######HUB genes based on GS and scale connectivity for Phenotypically  significant modules in D1#########
+names(DEGs_D1_T)[modules_DEGs_D1=="yellow"]
+names(DEGs_D1_T)[modules_DEGs_D1=="yellow"]->POP_D1_yellow
+POP_D1_yellow #409  are the ENTREZ IDS
+#write.table(POP_D1_yellow, file="ATIDs_D1_yellow.txt", row.names=F, col.names=F)
+
+
+DEGs_D1_yellow= networkConcepts(DEGs_D1_T[,POP_D1_yellow], trait=TRAIT_D1)
+DEGs_D1_yellow$Summary 
+DEGs_D1_yellow$Significance 
+K_DEGs_D1_yellow=DEGs_D1_yellow$Connectivity/max(DEGs_D1_yellow$Connectivity) #This is that should be >0.4 (K is for pink genes)
+GS_DEGs_D1_yellow=DEGs_D1_yellow$GS #This is that  should be >0.4 (GS is for all )
+
+length(K_DEGs_D1_yellow) #15
+length(GS_DEGs_D1_yellow) #15
+as.data.frame(cbind(K_DEGs_D1_yellow, GS_DEGs_D1_yellow))->K_GS_DEGs_D1_yellow 
+class(K_GS_DEGs_D1_yellow) #data frame
+
+subset(K_GS_DEGs_D1_yellow, K_DEGs_D1_yellow >=0.9 & GS_DEGs_D1_yellow >= 0.9)->HUBS_DEGs_D1_yellow       
+dim(HUBS_DEGs_D1_yellow)                       
+HUBS_DEGs_D1_yellow
+write.table(HUBS_DEGs_D1_yellow, file="HUBS_DEGs_D1_yellow_0.9.txt", row.names=TRUE, sep="\t")
+#####################
+##@DATA 122#####
+###############
+##Calculate Gene Significance (GS) and Module membership (MM) of D1
+TRAIT_D2 = as.data.frame(traitData_DEG_D2$Trait);
+names(TRAIT_D2) = "TRAIT_D2"
+# names (colors) of the modules
+modNames_DEGs_D2 = substring(names(MEs_DEGs_D2), 3)
+
+geneModuleMembership_GS_DEGs_D2 = as.data.frame(cor(DEGs_D2_T, MEs_DEGs_D2, use = "p"));
+MMPvalue_GS_DEGs_D2 = as.data.frame(corPvalueStudent(as.matrix(geneModuleMembership_GS_DEGs_D2), nSamples_D2_NW));
+names(geneModuleMembership_GS_DEGs_D2) = paste("MM", modNames_DEGs_D2, sep="");
+names(MMPvalue_GS_DEGs_D2) = paste("p.MM", modNames_DEGs_D2, sep="");
+
+geneTraitSignificance_GS_DEGs_D2 = as.data.frame(cor(DEGs_D2_T, TRAIT_D2, use = "p"));
+GSPvalue_GS_DEGs_D2 = as.data.frame(corPvalueStudent(as.matrix(geneTraitSignificance_GS_DEGs_D2), nSamples_D2_NW));
+names(geneTraitSignificance_GS_DEGs_D2) = paste("GS.", names(TRAIT_D2), sep="");
+names(GSPvalue_GS_DEGs_D2) = paste("p.GS.", names(TRAIT_D2), sep="");
+##################################################################################
+######HUB genes based on GS and scale connectivity for Phenotypically  significant modules in D2#########
+
+######module green
+names(DEGs_D2_T)[modules_DEGs_D2=="green"]
+names(DEGs_D2_T)[modules_DEGs_D2=="green"]->POP_D2_green
+POP_D2_green #55  are the ENTREZ IDS
+#write.table(POP_CARS_black, file="ATIDs/ATIDs_CARS/ATIDs_CARS_black.txt", row.names=F, col.names=F)
+
+
+DEGs_D2_green= networkConcepts(DEGs_D2_T[,POP_D2_green], trait=TRAIT_D2)
+DEGs_D2_green$Summary 
+DEGs_D2_green$Significance 
+K_DEGs_D2_green=DEGs_D2_green$Connectivity/max(DEGs_D2_green$Connectivity) #This is that should be >0.4 (K is for pink genes)
+GS_DEGs_D2_green=DEGs_D2_green$GS #This is that  should be >0.4 (GS is for all genes 2620)
+
+length(K_DEGs_D2_green) #55
+length(GS_DEGs_D2_green) #55
+as.data.frame(cbind(K_DEGs_D2_green, GS_DEGs_D2_green))->K_GS_DEGs_D2_green 
+class(K_GS_DEGs_D2_green) #data frame
+
+subset(K_GS_DEGs_D2_green, K_DEGs_D2_green >=0.9 & GS_DEGs_D2_green >= 0.9)->HUBS_DEGs_D2_green       
+dim(HUBS_DEGs_D2_green)                        #[1] 22   2
+HUBS_DEGs_D2_green
+write.table(HUBS_DEGs_D2_green, file="HUBS_DEGs_D2_green_0.9.txt", row.names=TRUE, sep="\t")
+
+##################################################################################
+#g1. EXPORT THE INTERACTION FILE FOR NETWORK VISUALIZATION IN CYTOSCAPE###################################
+#####################
+#Fetch the complete network of D1 and D2#################################################################
+cyt_whole_D1 = exportNetworkToCytoscape(adjacency_DEGs_D1,edgeFile = paste("CytoscapeInput-edges-", paste("DEGs_D1", collapse=""), ".txt", sep=""),nodeFile = paste("CytoscapeInput-nodes", paste("DEGs_D1, collapse=""), ".txt", sep=""),weighted = TRUE,threshold = 0.02)
+cyt_whole_D2 = exportNetworkToCytoscape(adjacency_DEGs_D2,edgeFile = paste("CytoscapeInput-edges-", paste("DEGs_D2", collapse=""), ".txt", sep=""),nodeFile = paste("CytoscapeInput-nodes", paste("DEGs_D2", collapse=""), ".txt", sep=""),weighted = TRUE,threshold = 0.02)
+
+#Fetch the NETWORK FOR EACH module from complete network of ####################################################################################################################################
+TOM_D1 = 1-dissTOM_DEGs_D1
+table(colors_DEGs_D1) ##Modules are acc. to this and 13 in numbers
+                                                       
+MOD =  "turquoise" 
+II<-rownames(t(DEGs_D1_T)) #probe names (XX)
+inModule = is.finite(match(colors_DEGs_D1, MOD))
+modGenes_DEGs_D1 = II[inModule]; 
+modGenes_DEGs_D1 
+modTOM_DEGs_D1 = TOM_D1[inModule, inModule];
+dimnames(modTOM_DEGs_D1) = list(modGenes_DEGs_109, modGenes_DEGs_109) 
+dimnames(modTOM_DEGs_D1) #112
+cyt = exportNetworkToCytoscape(modTOM_DEGs_D1,edgeFile = paste("CytoscapeInput-edges-", paste(MOD, collapse="-"), ".txt", sep=""),nodeFile = paste("CytoscapeInput-nodes-", paste(MOD, collapse="-"), ".txt", sep=""),weighted = TRUE,threshold = 0.0,nodeNames = modGenes_DEGs_D1, nodeAttr = colors_DEGs_D1[inModule]) 
+
+####################################################################################################################################
